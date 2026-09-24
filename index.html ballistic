@@ -1,0 +1,576 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ballistic</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        touch-action: none;
+    }
+
+    body {
+        background: #0d0d16;
+        color: white;
+        font-family: Arial, sans-serif;
+        overflow: hidden;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+    }
+
+    #game {
+        position: relative;
+        width: min(100vw, 500px);
+        height: 100vh;
+        max-height: 900px;
+        background: linear-gradient(#151525, #090910);
+        overflow: hidden;
+    }
+
+    canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+    }
+
+    #ui {
+        position: absolute;
+        top: 15px;
+        left: 15px;
+        right: 15px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 18px;
+        font-weight: bold;
+        pointer-events: none;
+    }
+
+    #message {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background: rgba(5,5,12,.85);
+        text-align: center;
+        z-index: 10;
+    }
+
+    #message h1 {
+        font-size: 48px;
+        margin-bottom: 10px;
+    }
+
+    #message p {
+        color: #aaa;
+        margin-bottom: 25px;
+    }
+
+    button {
+        border: 0;
+        border-radius: 12px;
+        padding: 14px 28px;
+        font-size: 18px;
+        font-weight: bold;
+        background: #6c5ce7;
+        color: white;
+        cursor: pointer;
+    }
+
+    button:hover {
+        background: #7d70ee;
+    }
+
+    .hidden {
+        display: none !important;
+    }
+</style>
+</head>
+
+<body>
+
+<div id="game">
+    <canvas id="canvas"></canvas>
+
+    <div id="ui">
+        <div>Score: <span id="score">0</span></div>
+        <div>Level: <span id="level">1</span></div>
+        <div>Balls: <span id="balls">10</span></div>
+    </div>
+
+    <div id="message">
+        <h1>BALLISTIC</h1>
+        <p>Aim, shoot and destroy the blocks!</p>
+        <button id="startBtn">START GAME</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const game = document.getElementById("game");
+
+const scoreText = document.getElementById("score");
+const levelText = document.getElementById("level");
+const ballsText = document.getElementById("balls");
+
+const message = document.getElementById("message");
+const startBtn = document.getElementById("startBtn");
+
+let W, H;
+let running = false;
+
+let score = 0;
+let level = 1;
+let balls = 10;
+
+let blocks = [];
+let projectiles = [];
+
+let mouse = {
+    x: 0,
+    y: 0,
+    down: false
+};
+
+const shooter = {
+    x: 0,
+    y: 0
+};
+
+function resize() {
+    const rect = game.getBoundingClientRect();
+
+    W = canvas.width = rect.width * devicePixelRatio;
+    H = canvas.height = rect.height * devicePixelRatio;
+
+    canvas.style.width = rect.width + "px";
+    canvas.style.height = rect.height + "px";
+
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+    shooter.x = rect.width / 2;
+    shooter.y = rect.height - 55;
+}
+
+resize();
+window.addEventListener("resize", resize);
+
+function randomColor() {
+    const colors = [
+        "#ff7675",
+        "#74b9ff",
+        "#55efc4",
+        "#ffeaa7",
+        "#a29bfe",
+        "#fd79a8"
+    ];
+
+    return colors[Math.floor(Math.random() * colors.length)];
+}
+
+function createBlocks() {
+    blocks = [];
+
+    const rows = Math.min(3 + Math.floor(level / 2), 6);
+    const cols = 5;
+
+    const padding = 8;
+    const blockWidth = (W / devicePixelRatio - padding * 2) / cols - 5;
+    const blockHeight = 55;
+
+    for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+
+            if (Math.random() < 0.22) continue;
+
+            const hp = level + Math.floor(Math.random() * 2);
+
+            blocks.push({
+                x: padding + col * (blockWidth + 5),
+                y: 100 + row * (blockHeight + 7),
+                width: blockWidth,
+                height: blockHeight,
+                hp: hp,
+                maxHp: hp,
+                color: randomColor()
+            });
+        }
+    }
+}
+
+function startGame() {
+    score = 0;
+    level = 1;
+    balls = 10;
+
+    projectiles = [];
+
+    createBlocks();
+
+    running = true;
+    message.classList.add("hidden");
+
+    updateUI();
+}
+
+startBtn.addEventListener("click", startGame);
+
+function updateUI() {
+    scoreText.textContent = score;
+    levelText.textContent = level;
+    ballsText.textContent = balls;
+}
+
+function getPointerPosition(e) {
+    const rect = canvas.getBoundingClientRect();
+
+    let clientX;
+    let clientY;
+
+    if (e.touches) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+
+    mouse.x = clientX - rect.left;
+    mouse.y = clientY - rect.top;
+}
+
+canvas.addEventListener("mousemove", getPointerPosition);
+
+canvas.addEventListener("touchmove", e => {
+    getPointerPosition(e);
+    e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener("mousedown", () => {
+    if (running) shoot();
+});
+
+canvas.addEventListener("touchstart", e => {
+    if (running) {
+        getPointerPosition(e);
+        shoot();
+    }
+    e.preventDefault();
+}, { passive: false });
+
+function shoot() {
+    if (balls <= 0) return;
+
+    let dx = mouse.x - shooter.x;
+    let dy = mouse.y - shooter.y;
+
+    // Don't shoot downward
+    if (dy >= -10) return;
+
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    dx /= distance;
+    dy /= distance;
+
+    const speed = 8;
+
+    projectiles.push({
+        x: shooter.x,
+        y: shooter.y,
+        vx: dx * speed,
+        vy: dy * speed,
+        radius: 7,
+        active: true
+    });
+
+    balls--;
+    updateUI();
+}
+
+function update() {
+
+    for (let p of projectiles) {
+
+        if (!p.active) continue;
+
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Wall bouncing
+        if (p.x - p.radius < 0) {
+            p.x = p.radius;
+            p.vx *= -1;
+        }
+
+        if (p.x + p.radius > W / devicePixelRatio) {
+            p.x = W / devicePixelRatio - p.radius;
+            p.vx *= -1;
+        }
+
+        // Top wall
+        if (p.y - p.radius < 0) {
+            p.y = p.radius;
+            p.vy *= -1;
+        }
+
+        // Remove when it reaches bottom
+        if (p.y > H / devicePixelRatio + 30) {
+            p.active = false;
+        }
+
+        // Block collision
+        for (let b of blocks) {
+
+            if (b.hp <= 0) continue;
+
+            if (
+                p.x + p.radius > b.x &&
+                p.x - p.radius < b.x + b.width &&
+                p.y + p.radius > b.y &&
+                p.y - p.radius < b.y + b.height
+            ) {
+
+                b.hp--;
+
+                score += 10;
+
+                // Bounce
+                const centerX = b.x + b.width / 2;
+                const centerY = b.y + b.height / 2;
+
+                const dx = p.x - centerX;
+                const dy = p.y - centerY;
+
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    p.vx *= -1;
+                } else {
+                    p.vy *= -1;
+                }
+
+                if (b.hp <= 0) {
+                    score += 25;
+                }
+
+                updateUI();
+            }
+        }
+    }
+
+    projectiles = projectiles.filter(p => p.active);
+
+    // Level completed
+    if (blocks.every(b => b.hp <= 0)) {
+        level++;
+
+        balls += 5;
+
+        createBlocks();
+
+        updateUI();
+    }
+
+    // Game over
+    if (balls <= 0 && projectiles.length === 0) {
+
+        const remaining = blocks.some(b => b.hp > 0);
+
+        if (remaining) {
+            gameOver();
+        }
+    }
+}
+
+function gameOver() {
+    running = false;
+
+    message.classList.remove("hidden");
+
+    message.querySelector("h1").textContent = "GAME OVER";
+
+    message.querySelector("p").textContent =
+        "Final Score: " + score;
+
+    startBtn.textContent = "PLAY AGAIN";
+}
+
+function drawBackground() {
+
+    const width = W / devicePixelRatio;
+    const height = H / devicePixelRatio;
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Grid
+    ctx.strokeStyle = "rgba(255,255,255,.035)";
+    ctx.lineWidth = 1;
+
+    for (let x = 0; x < width; x += 30) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+    }
+
+    for (let y = 0; y < height; y += 30) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+    }
+}
+
+function drawBlocks() {
+
+    for (let b of blocks) {
+
+        if (b.hp <= 0) continue;
+
+        ctx.fillStyle = b.color;
+
+        ctx.beginPath();
+
+        ctx.roundRect(
+            b.x,
+            b.y,
+            b.width,
+            b.height,
+            8
+        );
+
+        ctx.fill();
+
+        // Dark overlay based on health
+        const damage =
+            1 - b.hp / b.maxHp;
+
+        ctx.fillStyle =
+            `rgba(0,0,0,${damage * 0.6})`;
+
+        ctx.fill();
+
+        // HP number
+        ctx.fillStyle = "white";
+        ctx.font = "bold 20px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        ctx.fillText(
+            b.hp,
+            b.x + b.width / 2,
+            b.y + b.height / 2
+        );
+    }
+}
+
+function drawShooter() {
+
+    const width = W / devicePixelRatio;
+    const height = H / devicePixelRatio;
+
+    // Aim line
+    if (running && mouse.y < shooter.y) {
+
+        let dx = mouse.x - shooter.x;
+        let dy = mouse.y - shooter.y;
+
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        dx /= distance;
+        dy /= distance;
+
+        ctx.setLineDash([8, 8]);
+
+        ctx.strokeStyle = "rgba(255,255,255,.35)";
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+
+        ctx.moveTo(shooter.x, shooter.y);
+
+        ctx.lineTo(
+            shooter.x + dx * 300,
+            shooter.y + dy * 300
+        );
+
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+    }
+
+    // Cannon
+    ctx.fillStyle = "#ffffff";
+
+    ctx.beginPath();
+    ctx.arc(shooter.x, shooter.y, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#6c5ce7";
+
+    ctx.beginPath();
+    ctx.arc(shooter.x, shooter.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawProjectiles() {
+
+    for (let p of projectiles) {
+
+        if (!p.active) continue;
+
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "#ffffff";
+
+        ctx.fillStyle = "#ffffff";
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            p.radius,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+    }
+}
+
+function draw() {
+
+    drawBackground();
+    drawBlocks();
+    drawProjectiles();
+    drawShooter();
+}
+
+function gameLoop() {
+
+    if (running) {
+        update();
+    }
+
+    draw();
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+
+</script>
+
+</body>
+</html>
+```
